@@ -60,14 +60,16 @@
     - Sequence Control requires the user to tap the device three times to make it work
     - Remote Only completely locks out the face of the device (but Panic Mode will still be turned off with switch press)
  
-    - Can be changed in preferences
-    - Can be changed programatically with protectionMode(Short) where 0 is Disabled, 1 is Sequence Control, and 2 is Remote Only
-    - When changed programatically, preferences are not updated (SmartThings limitation)    
+    - Current status displayed in tile
+    - Can be toggled Disabled -> Sequence Control -> Remote Only -> Disabled
+    - Can be changed programatically with commands protectionDisabled(), protectionSequenceControl(), and protectionRemoteOnly()
     
  *** Version history
  
    28 Apr 2016  v1  initial release
- 
+   01 May 2016  v2  - changed Protection Mode commands, now no longer uses parameters
+                    - moved Protection Mode setting from preferences to tile
+                    - added multiple value tiles to UI to display current dimmer configuration (device parameters)                    
  */
  
 metadata {
@@ -81,9 +83,11 @@ metadata {
 		capability "Refresh"
         capability "Alarm"
         
-        command "protectionMode", ["string"]
+        command "protectionDisabled"
+        command "protectionSequenceControl"
+        command "protectionRemoteOnly"
 
-        attribute "protection", "enum", ["disabled","sequenceControl","remoteOnly"]
+        attribute "protection", "enum", ["disabled","sequence","remote"]
         
 		fingerprint deviceId:"0x1104", inClusters: "0x26,0x27,0x75,0x86,0x70,0x71,0x85,0x77,0x2B,0x2C,0x72,0x73,0x82,0x87"
         
@@ -198,15 +202,6 @@ metadata {
              required: false,
              displayDuringSetup: false
              )
-        input(
-             "protectionMode",
-             "enum",
-             title: "Protection Mode (Child Protection)",
-             options: ["Disabled","Sequence Control","Remote Only"],
-             defaultValue: "Disabled",
-             required: false,
-             displayDuringSetup: false
-             ) 
     }   
     
 	tiles(scale: 2) {
@@ -229,16 +224,44 @@ metadata {
 		}
 
         standardTile("alarm", "device.alarm", width: 2, height: 2) {
+            state "default", label:'...', icon:"st.security.alarm.clear", backgroundColor:"#ffffff"
             state "off", label:'${currentValue}', action:"alarm.strobe", icon:"st.security.alarm.clear", backgroundColor:"#ffffff"
 			state "strobe", label:'${currentValue}', action:"alarm.off", icon:"st.security.alarm.alarm", backgroundColor:"#e86d13"
         } 
         
-        valueTile("protection", "device.protection", width: 2, height: 1, decoration: "flat", wordWrap: true) {
-			state "default", label:'Protection Mode\n${currentValue}'
+        standardTile("protection", "device.protection", width: 2, height: 2, decoration: "flat") {
+            state "default", label:'Updating...', action:"protectionDisabled", icon:"st.Home.home30"
+			state "disabled", label:'Protection Off', action:"protectionSequenceControl", icon:"st.Home.home30"
+            state "sequence", label:'Sequence Ctrl', action:"protectionRemoteOnly", icon:"st.Home.home30"
+            state "remote", label:'Remote Only', action:"protectionDisabled", icon:"st.Home.home30"
+		}
+        
+        valueTile("range", "device.range", width: 2, height: 1, decoration: "flat", wordWrap: true) {
+			state "default", label:'${currentValue}'
+		}
+        
+        valueTile("ramp", "device.ramp", width: 2, height: 1, decoration: "flat", wordWrap: true) {
+			state "default", label:'${currentValue}'
+		}
+        
+        valueTile("delayed_off", "device.delayed_off", width: 2, height: 1, decoration: "flat", wordWrap: true) {
+			state "default", label:'${currentValue}'
+		}
+
+        valueTile("kickstart", "device.kickstart", width: 2, height: 1, decoration: "flat", wordWrap: true) {
+			state "default", label:'${currentValue}'
+		}
+        
+        valueTile("panic_on", "device.panic_on", width: 2, height: 1, decoration: "flat", wordWrap: true) {
+			state "default", label:'${currentValue}'
+		}
+        
+        valueTile("panic_off", "device.panic_off", width: 2, height: 1, decoration: "flat", wordWrap: true) {
+			state "default", label:'${currentValue}'
 		}
         
 		main(["switch"])
-		details(["switch", "refresh", "alarm", "protection"])
+		details(["switch", "refresh", "alarm", "protection", "range", "ramp", "delayed_off", "kickstart", "panic_on", "panic_off"])
 	}
 }
 
@@ -254,8 +277,6 @@ def updated() {
     if (settings.p8 == null) settings.p8 = "Enabled"
     if (settings.p11 == null) settings.p11 = 4
     if (settings.p12 == null) settings.p12 = 99
-
-    if (settings.protectionMode == null) settings.protectionMode = "Disabled"
         
 /*
   Device stores parameter configuration values as a signed single byte number
@@ -292,11 +313,6 @@ def updated() {
     if ((settings.p12 - settings.p11) < 13) {
        settings.p11 = 4
     }
-
-    Short protectionSet
-    if (settings.protectionMode == "Sequence Control") protectionSet = 1
-    else if (settings.protectionMode == "Remote Only") protectionSet = 2
-    else protectionSet = 0
     
     //set delay to refresh status to ramp time in msec + 500 msec
     state.delayStatus = (settings.p7 * 1000) + 500
@@ -322,8 +338,9 @@ def updated() {
     cmds << zwave.configurationV1.configurationSet(parameterNumber: 8, size: 1, configurationValue: [param8]).format()
     cmds << zwave.configurationV1.configurationSet(parameterNumber: 11, size: 1, configurationValue: [settings.p11]).format()
     cmds << zwave.configurationV1.configurationSet(parameterNumber: 12, size: 1, configurationValue: [settings.p12]).format()
-    cmds << protectionMode(protectionSet)
-    cmds << "delay 1000"
+    cmds << "delay 800"
+    cmds << refreshUI()
+    cmds << zwave.protectionV1.protectionGet().format()
     cmds << setLevel(switchLevel,1)
     
 	response(delayBetween(cmds))
@@ -406,13 +423,13 @@ def zwaveEvent(physicalgraph.zwave.commands.configurationv1.ConfigurationReport 
 
 def zwaveEvent(physicalgraph.zwave.commands.protectionv1.ProtectionReport cmd) {    
     if (cmd.protectionState == 0) {
-       createEvent(name: "protection", value: "Disabled", descriptionText: "Protection Mode Disabled")
+       createEvent(name: "protection", value: "disabled", descriptionText: "Protection Mode Disabled")
     }
     else if (cmd.protectionState == 1) {
-       createEvent(name: "protection", value: "Sequence Control", descriptionText: "Protection Mode set to Sequence Control")
+       createEvent(name: "protection", value: "sequence", descriptionText: "Protection Mode set to Sequence Control")
     }
     else if (cmd.protectionState == 2) {
-       createEvent(name: "protection", value: "Remote Only", descriptionText: "Protection Mode set to Remote Only")
+       createEvent(name: "protection", value: "remote", descriptionText: "Protection Mode set to Remote Only")
     }
 }
 
@@ -508,8 +525,36 @@ def refresh() {
       cmds << zwave.alarmV1.alarmReport(alarmType: 1, alarmLevel: 0).format()
     }
     cmds << zwave.switchMultilevelV1.switchMultilevelGet().format()
-    delayBetween(cmds)    
+    refreshUI()
+    delayBetween(cmds)
 }
+
+private refreshUI() {
+    def valueP7
+    def valueP1
+    def valueP2
+    def valueP3
+    
+    if (settings.p7 > 1) valueP7 = "${settings.p7} seconds"
+    else valueP7 = "1 second"
+
+    if (settings.p1 > 1) valueP1 = "${settings.p1} seconds"
+    else valueP1 = "1 second"
+
+    if (settings.p2 > 1) valueP2 = "${settings.p2} seconds"
+    else valueP2 = "1 second"
+
+    if (settings.p3 > 1) valueP3 = "${settings.p3} seconds"
+    else valueP3 = "1 second"
+    
+    sendEvent(name: "range", value: "Dimmer range:\n${settings.p11}% - ${settings.p12}%", displayed: false)
+    sendEvent(name: "ramp", value: "Ramp duration:\n${valueP7}", displayed: false)
+    sendEvent(name: "delayed_off", value: "Delayed Off duration:\n${valueP1}", displayed: false)
+    sendEvent(name: "kickstart", value: "Kickstart feature\n${settings.p8}", displayed: false)
+    sendEvent(name: "panic_on", value: "Panic light On duration:\n${valueP2}", displayed: false)
+    sendEvent(name: "panic_off", value: "Panic light Off duration:\n${valueP3}", displayed: false)
+}    
+
 
 // ALARM COMMANDS
 
@@ -535,7 +580,7 @@ def both() {
 
 // PROTECTION COMMAND
 
-def protectionMode(protectionSet) {
+private protectionMode(protectionSet) {
     log.debug "protectionMode() called with ${protectionSet}"
     def newMode = protectionSet as Short
     if (newMode == 0 || newMode == 1 || newMode == 2) {
@@ -544,4 +589,16 @@ def protectionMode(protectionSet) {
             zwave.protectionV1.protectionGet().format()
        ],100)
     }
+}
+
+def protectionDisabled() {
+    protectionMode(0)
+}
+
+def protectionSequenceControl() {
+    protectionMode(1)
+}
+
+def protectionRemoteOnly() {
+    protectionMode(2)
 } 
