@@ -35,6 +35,10 @@ metadata {
     
     tiles(scale: 2) {
 
+        valueTile("modeCurrent", "device.modeCurrent", decoration: "flat", width: 6, height: 1) {
+			state "default", label:'${currentValue}', backgroundColor:"#999999"
+        }
+    
         standardTile("Home", "device.Home", decoration: "flat", width: 2, height: 2) {
 			state "inactive", label:'Home', action:"modeHome", icon:"st.Home.home2", backgroundColor:"#ffffff"
 			state "active", label:'Home', action:"modeHome", icon:"st.Home.home2", backgroundColor:"#dcdcdc"
@@ -48,10 +52,6 @@ metadata {
         standardTile("Night", "device.Night", decoration: "flat", width: 2, height: 2) {
 			state "inactive", label:'Night', action:"modeNight", icon:"st.Weather.weather4", backgroundColor:"#ffffff"
 			state "active", label:'Night', action:"modeNight", icon:"st.Weather.weather4", backgroundColor:"#dcdcdc"
-        }
-
-        valueTile("modeCurrent", "device.modeCurrent", decoration: "flat", width: 6, height: 1) {
-			state "default", label:'${currentValue}', backgroundColor:"#999999"
         }
         
 		main(["modeCurrent"]) //modeCurrent is primary so that list of Things in mobile app shows the current mode
