@@ -15,6 +15,7 @@
  *  Version History
  *
  *  0.9 7/23/16
+ *  1.0 7/25/16 bug fixes
  *
  */
 metadata {
@@ -25,8 +26,7 @@ metadata {
 		capability "Tamper Alert"
 		capability "Configuration"
         
-        fingerprint mfr: "0109", prod: "2022", model: "2201", cc: "85,59,80,5A,7A,72,71,73,98,86,84,5E", ccOut: "20"
-        
+        fingerprint type: "0701", mfr: "0109", prod: "2022", model: "2201", cc:"5E,98", sec:"86,72,5A,85,59,73,80,71,84,7A,20"        
     /*
     
     Command Classes:
@@ -135,14 +135,14 @@ def zwaveEvent(physicalgraph.zwave.commands.notificationv3.NotificationReport cm
 
 def zwaveEvent(physicalgraph.zwave.commands.wakeupv2.WakeUpNotification cmd) {
 	def evt = createEvent(descriptionText: "Woke up", displayed: false)
-	def cmds
+	def cmds = []
 	if (!state.lastbat || now() - state.lastbat > 48*60*60*1000) { //battery report every 48hrs
-		cmds = zwave.batteryV1.batteryGet()
+		cmds << zwave.batteryV1.batteryGet()
 	}
     else {
-		cmds = zwave.wakeUpV2.wakeUpNoMoreInformation()
+		cmds << zwave.wakeUpV2.wakeUpNoMoreInformation()
 	}
-	return [evt, response(command(cmds))]
+	return [evt, response(delayBetween(commands(cmds)))]
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.batteryv1.BatteryReport cmd) {
@@ -154,7 +154,7 @@ def zwaveEvent(physicalgraph.zwave.commands.batteryv1.BatteryReport cmd) {
         state.lastbat = now()
         evt = createEvent(name: "battery", value: cmd.batteryLevel, unit: "%", descriptionText: "Battery level ${cmd.batteryLevel}%", isStateChange: true)
     }
-    return [evt, response(command(zwave.wakeUpV2.wakeUpNoMoreInformation()))]
+    return [evt, response(delayBetween(commands([zwave.wakeUpV2.wakeUpNoMoreInformation()])))]
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.wakeupv2.WakeUpIntervalReport cmd) {
@@ -172,11 +172,11 @@ def configure() {
 }
 
 def updated() {
-    response(configure())
+    response(delayBetween(configure()))
 }
 
 private command(physicalgraph.zwave.Command cmd) {
-	if (state.sec == 1) return zwave.securityV1.securityMessageEncapsulation().encapsulate(cmd).format()
+	if (state.sec) return zwave.securityV1.securityMessageEncapsulation().encapsulate(cmd).format()
     else return cmd.format()
 }
 
