@@ -261,7 +261,7 @@ def processGetEvent(evt) { //events on/off, level, colorTemperature
     if (device.currentValue("switch") == "off" && evt.value != "on") { //if off, ignore eveything except on
         return []
     }
-    else if ((now() - state?.lastOff?.toBigInteger()) < 4000 && evt.name == "level") {
+    else if ((now() - state.lastOff?.toBigInteger()) < 4000 && evt.name == "level") {
         return []
     }
     else if (device.currentValue("switch") == "on" && evt.value == "on") {
@@ -269,7 +269,7 @@ def processGetEvent(evt) { //events on/off, level, colorTemperature
     } 
     else if (evt.value == "on") { //prevent duplicate On
         if (state.lastOn) {
-            if ((now() - state.lastOn) < 500) return []
+            if ((now() - state.lastOn?.toBigInteger()) < 500) return []
         }
         result << createEvent(evt)
         state.lastOn = now()
