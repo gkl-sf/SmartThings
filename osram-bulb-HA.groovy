@@ -215,18 +215,26 @@ private getDEFAULT_LOOP_RATE() {"05"} //5 steps per sec
 def parse(String description) {
     
     def result = zigbee.getEvent(description)
+    def cmds = []
     
     if (result) {
-        def processedGetEvent = processGetEvent(result)
-        return processedGetEvent
-    }    
-            
+        cmds << createEvent(result)
+        
+        if (device.currentValue("pulse") == "on" && result.name == "level") {
+            if (!state.pulseDuration) state.pulseDuration = DEFAULT_PULSE_DURATION
+            if (result.value == 5) cmds << new physicalgraph.device.HubAction("st cmd 0x${device.deviceNetworkId} ${endpointId} 8 4 {fb ${state.pulseDuration}}")
+            else if (result.value == 99) cmds << new physicalgraph.device.HubAction("st cmd 0x${device.deviceNetworkId} ${endpointId} 8 4 {0d ${state.pulseDuration}}")            
+        }
+        else if (result.name == "colorTemperature") {
+            if (device.currentValue("colorMode") == "W") {
+                def tempName = getTempName(result.value)
+                cmds << createEvent(name: "colorName", value: tempName, displayed: false)
+            }    
+        }
+    }        
     else {
         def zigbeeMap = zigbee.parseDescriptionAsMap(description)
-        if (zigbeeMap?.clusterInt == COLOR_CONTROL_CLUSTER && device.currentValue("switch") == "on") {
-        
-            def cmds = []        
-        
+        if (zigbeeMap?.clusterInt == COLOR_CONTROL_CLUSTER && device.currentValue("switch") == "on") {        
             if (zigbeeMap.attrInt == ATTRIBUTE_HUE) {
                 def hueValue = Math.round(zigbee.convertHexToInt(zigbeeMap.value) / 254 * 360)
                 def colorName = getColorName(hueValue)
@@ -244,56 +252,14 @@ def parse(String description) {
                 else if (zigbeeMap.value == "02") {
                     cmds << createEvent(name: "colorMode", value: "W", displayed: false)
                 }
-            }            
-            if (cmds) {
-                return cmds
-            }    
+            }               
         }
         else if (zigbeeMap?.clusterInt == 0x8021) {
             log.debug "*** received Configure Reporting response: ${zigbeeMap.data}"
         }
     }
-}
-
-def processGetEvent(evt) { //events on/off, level, colorTemperature
-
-    def result = []
-    if (device.currentValue("switch") == "off" && evt.value != "on") { //if off, ignore eveything except on
-        return []
-    }
-    else if ((now() - state.lastOff?.toBigInteger()) < 4000 && evt.name == "level") {
-        return []
-    }
-    else if (device.currentValue("switch") == "on" && evt.value == "on") {
-        return []
-    } 
-    else if (evt.value == "on") { //prevent duplicate On
-        if (state.lastOn) {
-            if ((now() - state.lastOn?.toBigInteger()) < 500) return []
-        }
-        result << createEvent(evt)
-        state.lastOn = now()
-    }
-    else if (device.currentValue("pulse") == "on" && evt.name == "level") {
-        result << createEvent(evt + [displayed:false])
-        if (!state.pulseDuration) state.pulseDuration = DEFAULT_PULSE_DURATION
-        if (evt.value == 5) {
-            result << new physicalgraph.device.HubAction("st cmd 0x${device.deviceNetworkId} ${endpointId} 8 4 {fb ${state.pulseDuration}}")
-        }
-        else if (evt.value == 99) {
-            result << new physicalgraph.device.HubAction("st cmd 0x${device.deviceNetworkId} ${endpointId} 8 4 {0d ${state.pulseDuration}}")
-        }      
-    }
-    else if (evt.name == "colorTemperature") {
-        if (device.currentValue("colorMode") == "W") { //while On and in RGB, does it ever report colorTemp?
-            def tempName = getTempName(evt.value)
-            result << createEvent(evt + [unit:"K", displayed: false])
-            result << createEvent(name: "colorName", value: tempName, displayed: false)
-        }    
-    }    
-    else result << createEvent(evt)
-
-    return result
+    
+    return cmds
 }
 
 def updated() {
@@ -383,7 +349,7 @@ def on() {
 }
 
 def off() {
-    state.lastOff = now()
+    pulseOff()
     zigbee.off()
 }
 
