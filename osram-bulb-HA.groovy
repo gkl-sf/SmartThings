@@ -1,5 +1,5 @@
 /**
- *  Osram Lightify RGBW A19/BR30 US version (HA) DTH rev 6/6/2017
+ *  Osram Lightify RGBW A19/BR30 US version (HA) DTH rev 01/19/2018
  *
  *  by gkl_sf
  *
@@ -54,6 +54,9 @@ metadata {
         command "loopOff"
         
         command "setDefaultColor"
+	    
+	attribute "colorName", "string"
+        attribute "colorMode", "string"    
         
         fingerprint profileId: "0104", inClusters: "0000,0003,0004,0005,0006,0008,0300,0B04,FC0F", outClusters: "0019", manufacturer: "OSRAM", model: "LIGHTIFY A19 RGBW", deviceJoinName: "Osram Lightify A19 RGBW"
         fingerprint profileId: "0104", inClusters: "0000,0003,0004,0005,0006,0008,0300,0B04,FC0F", outClusters: "0019", manufacturer: "OSRAM", model: "LIGHTIFY BR RGBW", deviceJoinName: "Osram Lightify LED BR30 RGBW"
