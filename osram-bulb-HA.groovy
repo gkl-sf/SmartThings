@@ -1,5 +1,17 @@
 /**
- *  Osram Lightify RGBW A19/BR30 US version (HA) DTH
+ *  Osram Lightify RGBW A19/BR30 US version (HA) DTH rev 01/19/2018
+ *
+ *  by gkl_sf
+ *
+ *  set default color/level code by ranga
+ *
+ *  To set default initial (power-on) color/level:
+ *  - set your preferred color/level
+ *  - wait for few seconds, then tap the Set Default tile
+ *  - wait 3-5 minutes for the process to complete (do NOT switch off or change any settings during this time)
+ *  - the main (on/off) tile will turn orange with "WAIT" status during this period; if it does not reset after 3-5 minutes, tap the refresh tile 
+ *  - after that, you can try switching power off and on to see if the new color/level is set correctly
+ *  - may need to upgrade firmware (via ST OTA) for this to work
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -40,6 +52,11 @@ metadata {
         
         command "loopOn"
         command "loopOff"
+        
+        command "setDefaultColor"
+	    
+	attribute "colorName", "string"
+        attribute "colorMode", "string"    
         
         fingerprint profileId: "0104", inClusters: "0000,0003,0004,0005,0006,0008,0300,0B04,FC0F", outClusters: "0019", manufacturer: "OSRAM", model: "LIGHTIFY A19 RGBW", deviceJoinName: "Osram Lightify A19 RGBW"
         fingerprint profileId: "0104", inClusters: "0000,0003,0004,0005,0006,0008,0300,0B04,FC0F", outClusters: "0019", manufacturer: "OSRAM", model: "LIGHTIFY BR RGBW", deviceJoinName: "Osram Lightify LED BR30 RGBW"
@@ -106,6 +123,7 @@ metadata {
                 attributeState "off", label:'${name}', action:"on", icon:"st.lights.philips.hue-single", backgroundColor:"#ffffff", nextState:"turningOn"
                 attributeState "turningOn", label:'Turning...', action:"on", icon:"st.lights.philips.hue-single", backgroundColor:"#ffffff", nextState:"turningOn"
                 attributeState "turningOff", label:'Turning...', action:"off", icon:"st.lights.philips.hue-single", backgroundColor:"#79b821", nextState:"turningOff"
+                attributeState "wait", label:'Wait...', icon:"st.lights.philips.hue-single", backgroundColor:"#ffa81e"                
             }           
             tileAttribute ("device.level", key: "SLIDER_CONTROL") {
                 attributeState "level", action:"setLevel"
@@ -186,10 +204,14 @@ metadata {
         
         standardTile("configure", "device.configure", decoration: "flat", height: 2, width: 2) {
 			state "configure", label:'', action:"configure", icon:"st.secondary.configure"
-		}        
+		}
+
+        standardTile("defaultColor", "device.defaultColor", decoration: "flat", width: 2, height: 2) {
+            state "default", label:'Set Default', action: "setDefaultColor", icon: "st.Lighting.light13"
+        }        
         
         main(["switch"])
-        details(["switch", "hueSliderControl", "hue", "saturation", "colorName", "colorTempSliderControl", "colorTemp", "temp2700", "temp3000", "temp6500", "pulse", "blink", "colorLoop", "refresh", "configure"])
+        details(["switch", "hueSliderControl", "hue", "saturation", "colorName", "colorTempSliderControl", "colorTemp", "temp2700", "temp3000", "temp6500", "pulse", "blink", "colorLoop", "refresh", "configure", "defaultColor"])
     }
 }
 
@@ -257,6 +279,7 @@ def parse(String description) {
         else if (zigbeeMap?.clusterInt == 0x8021) {
             log.debug "*** received Configure Reporting response: ${zigbeeMap.data}"
         }
+        else { log.debug "*** unparsed response: ${zigbeeMap}" }
     }
     
     return cmds
@@ -463,6 +486,17 @@ def temp3000() {
 
 def temp6500() {
     setColorTemperature(6500)
+}
+
+def setDefaultColor() {
+	log.info "Setting default color"
+    def cmds = 
+    [
+    sendEvent(name: "switch", value: "wait", descriptionText: "Setting default color/level", displayed: true, isChange: true),
+    "st cmd 0x${device.deviceNetworkId} ${endpointId} 0xFC0F 0x01 {}",
+    "delay 180000"
+    ]
+    return cmds + refresh()
 }
 
 private getEndpointId() {
